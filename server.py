@@ -9,7 +9,7 @@ load_dotenv()
 
 from starlette.exceptions import HTTPException
 from starlette.requests import Request
-from starlette.responses import Response
+from starlette.responses import JSONResponse, Response
 
 from mcp.server.auth.settings import AuthSettings, ClientRegistrationOptions
 from mcp.server.fastmcp import FastMCP
@@ -78,6 +78,11 @@ async def login_page(request: Request) -> Response:
 @mcp.custom_route("/login/callback", methods=["POST"])
 async def login_callback(request: Request) -> Response:
     return await oauth_provider.handle_login_callback(request)
+
+
+@mcp.custom_route("/health", methods=["GET"])
+async def health_check(request: Request) -> Response:
+    return JSONResponse({"status": "ok", "server": server_name})
 
 
 @mcp.tool()

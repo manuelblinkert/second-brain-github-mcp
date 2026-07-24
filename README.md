@@ -33,6 +33,15 @@ Then validate the OAuth gate and connect it to your AI app (Claude, ChatGPT, …
 following [`docs/connector-setup.md`](docs/connector-setup.md). The auth and
 security model is described in [`docs/security-notes.md`](docs/security-notes.md).
 
+## Health check
+
+Use `/health` for uptime monitors. It is intentionally unauthenticated and
+returns HTTP 200 when the server process is running:
+
+```text
+https://<your-domain>/health
+```
+
 ## Configure
 
 All configuration is via environment variables (see `.env.example`):

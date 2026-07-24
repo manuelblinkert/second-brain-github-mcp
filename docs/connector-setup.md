@@ -49,6 +49,13 @@ curl -i http://localhost:8000/mcp
 # expect: 401 + WWW-Authenticate: Bearer ... resource_metadata=".../.well-known/oauth-protected-resource/mcp"
 ```
 
+Confirm the unauthenticated health endpoint for uptime monitoring:
+
+```bash
+curl -i http://localhost:8000/health
+# expect: 200 + {"status":"ok","server":"<your-server-name>"}
+```
+
 Then run MCP Inspector against `http://localhost:8000/mcp`:
 
 ```bash
