@@ -87,9 +87,15 @@ via `docker compose`.
    known (e.g. `https://<your-app>`). A wrong/placeholder URL breaks OAuth
    discovery — confirm the actual assigned URL first (some platforms add a
    random suffix).
-4. Re-run the step-2 checks against the deployed `/mcp` endpoint with Inspector
+4. For restart-safe OAuth on a single VPS/container, mount a host directory at
+   `/data` and set `OAUTH_DB_PATH=/data/oauth.sqlite3`. If you omit it, the
+   server still starts but logs a warning and connected clients may need to be
+   recreated after a restart. Start from `docker-compose.example.yml` when the
+   Compose file lives in the repository; see [`oauth-storage.md`](oauth-storage.md)
+   for both repository-root and parent-directory layouts.
+5. Re-run the step-2 checks against the deployed `/mcp` endpoint with Inspector
    before connecting an AI app.
-5. Redeploy after any env-var change (PAT rotation, new member, URL) — env is
+6. Redeploy after any env-var change (PAT rotation, new member, URL) — env is
    read only at startup.
 
 ## 4. Add the connector in your AI app
@@ -140,4 +146,6 @@ Have each member, from their own app, write a dated test note (e.g. under an
 Stop and note exactly which step failed — discovery, registration, login
 redirect, token exchange, or the authenticated call. That pinpoints the fix
 (usually a mismatched `MCP_PUBLIC_BASE_URL` / `OAUTH_ISSUER_URL` vs. the real
-public URL).
+public URL). If an existing connection reports that its client ID is missing
+after a restart, confirm `OAUTH_DB_PATH` points to a persistent host-mounted
+database rather than the container writable layer.

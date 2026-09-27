@@ -1,0 +1,17 @@
+services:
+  second-brain-github-mcp:
+    container_name: second-brain-github-mcp
+    build:
+      context: .
+    env_file:
+      - ./.env
+    ports:
+      - "127.0.0.1:8000:8000"
+    volumes:
+      - ./.oauth-data:/data
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: 3

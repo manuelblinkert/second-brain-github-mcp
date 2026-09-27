@@ -1,3 +1,4 @@
+import logging
 import os
 
 from dotenv import load_dotenv
@@ -17,7 +18,10 @@ from pydantic import AnyHttpUrl
 
 from auth import MCP_SCOPE, TeamOAuthProvider
 from github_tools import register_github_tools
+from oauth_store import InMemoryOAuthStore, SQLiteOAuthStore
 from registry import load_registry_from_env
+
+logger = logging.getLogger(__name__)
 
 REQUIRED_ENV_VARS = (
     "MCP_PUBLIC_BASE_URL",
@@ -40,11 +44,24 @@ login_path = f"{public_base_url}/login"
 server_name = os.environ.get("MCP_SERVER_NAME", "second-brain-github-mcp")
 github_target = f"{os.environ['GITHUB_ALLOWED_OWNER']}/{os.environ['GITHUB_ALLOWED_REPO']}"
 
+oauth_db_path = os.environ.get("OAUTH_DB_PATH", "").strip()
+if oauth_db_path:
+    oauth_store = SQLiteOAuthStore(oauth_db_path)
+    logger.info("OAuth state persistence enabled with SQLite at %s", oauth_db_path)
+else:
+    oauth_store = InMemoryOAuthStore()
+    logger.warning(
+        "OAUTH_DB_PATH is not set: using in-memory OAuth state. "
+        "Registered clients, tokens, authorization codes, and login state "
+        "will be lost whenever this process restarts."
+    )
+
 oauth_provider = TeamOAuthProvider(
     server_url=public_base_url,
     login_path=login_path,
     registry=registry,
     login_label=github_target,
+    store=oauth_store,
 )
 
 mcp = FastMCP(

@@ -72,6 +72,8 @@ access is bounded. These are the boundaries:
 
 Full auth and threat model:
 [`docs/security-notes.md`](docs/security-notes.md).
+OAuth persistence and deployment options:
+[`docs/oauth-storage.md`](docs/oauth-storage.md).
 
 ## Tools
 
@@ -111,6 +113,9 @@ All configuration is via environment variables (see `.env.example`):
   and writes.
 - `MCP_SERVER_NAME` (optional) — the name this instance reports (login page,
   `ping`). Defaults to `second-brain-github-mcp`.
+- `OAUTH_DB_PATH` (optional) - enables restart-safe SQLite storage for OAuth
+  clients, tokens, authorization codes, and login state. Without it, the server
+  uses memory and prints a startup warning.
 
 ## Deploy
 
@@ -119,7 +124,10 @@ The app builds from the included `Dockerfile` and runs on any Docker host
 variable from `.env.example` as an encrypted platform env var — never upload a
 `.env` file — and set the public-URL vars to the real assigned URL. The server
 reads env only at startup, so redeploy after any change (PAT rotation, new
-member, URL). Full steps are in the connector-setup doc.
+member, URL). For a single production container, mount a host directory and set
+`OAUTH_DB_PATH=/data/oauth.sqlite3`. Full steps are in the connector-setup and
+OAuth-storage docs. A complete generic starting point is included as
+`docker-compose.example.yml`.
 
 ## Health check
 

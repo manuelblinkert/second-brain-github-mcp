@@ -3,6 +3,15 @@
 __pycache__
 *.pyc
 .env
+.oauth-data
+*.sqlite
+*.sqlite-journal
+*.sqlite-shm
+*.sqlite-wal
+*.sqlite3
+*.sqlite3-journal
+*.sqlite3-shm
+*.sqlite3-wal
 .DS_Store
 .pytest_cache
 .ruff_cache

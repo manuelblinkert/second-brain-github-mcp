@@ -31,11 +31,13 @@ from mcp.server.auth.provider import (
 )
 from mcp.shared.auth import OAuthClientInformationFull, OAuthToken
 
+from oauth_store import InMemoryOAuthStore, LoginState, OAuthStore
 from registry import MemberRegistry
 
 MCP_SCOPE = "mcp"
 ACCESS_TOKEN_TTL_SECONDS = 2592000  # 30 days
 AUTH_CODE_TTL_SECONDS = 300
+LOGIN_STATE_TTL_SECONDS = 600
 
 
 class TeamOAuthProvider(OAuthAuthorizationServerProvider[AuthorizationCode, RefreshToken, AccessToken]):
@@ -54,6 +56,7 @@ class TeamOAuthProvider(OAuthAuthorizationServerProvider[AuthorizationCode, Refr
         login_path: str,
         registry: "MemberRegistry",
         login_label: str = "your vault",
+        store: OAuthStore | None = None,
     ) -> None:
         self.server_url = server_url
         self.login_path = login_path
@@ -62,38 +65,42 @@ class TeamOAuthProvider(OAuthAuthorizationServerProvider[AuthorizationCode, Refr
         # connected to (e.g. "owner/repo"), so a member sees what they are
         # signing in to access.
         self.login_label = login_label
-
-        self.clients: dict[str, OAuthClientInformationFull] = {}
-        self.auth_codes: dict[str, AuthorizationCode] = {}
-        self.tokens: dict[str, AccessToken] = {}
-        self.state_mapping: dict[str, dict[str, str | None]] = {}
+        self.store = store or InMemoryOAuthStore()
 
     # -- Dynamic Client Registration --------------------------------------
 
     async def get_client(self, client_id: str) -> OAuthClientInformationFull | None:
-        return self.clients.get(client_id)
+        return self.store.get_client(client_id)
 
     async def register_client(self, client_info: OAuthClientInformationFull) -> None:
         if not client_info.client_id:
             raise ValueError("No client_id provided")
-        self.clients[client_info.client_id] = client_info
+        self.store.save_client(client_info)
 
     # -- Authorization code flow -------------------------------------------
 
     async def authorize(self, client: OAuthClientInformationFull, params: AuthorizationParams) -> str:
         state = params.state or secrets.token_hex(16)
-        self.state_mapping[state] = {
-            "redirect_uri": str(params.redirect_uri),
-            "code_challenge": params.code_challenge,
-            "redirect_uri_provided_explicitly": str(params.redirect_uri_provided_explicitly),
-            "client_id": client.client_id,
-            "resource": params.resource,
-        }
+        if not client.client_id:
+            raise ValueError("No client_id provided")
+        self.store.save_login_state(
+            state,
+            LoginState(
+                redirect_uri=str(params.redirect_uri),
+                code_challenge=params.code_challenge,
+                redirect_uri_provided_explicitly=params.redirect_uri_provided_explicitly,
+                client_id=client.client_id,
+                resource=params.resource,
+                expires_at=time.time() + LOGIN_STATE_TTL_SECONDS,
+            ),
+        )
         return f"{self.login_path}?state={state}&client_id={client.client_id}"
 
     async def get_login_page(self, state: str) -> HTMLResponse:
         if not state:
             raise HTTPException(400, "Missing state parameter")
+        if self.store.get_login_state(state) is None:
+            raise HTTPException(400, "Invalid or expired state parameter")
 
         html_content = f"""
         <!DOCTYPE html>
@@ -139,64 +146,64 @@ class TeamOAuthProvider(OAuthAuthorizationServerProvider[AuthorizationCode, Refr
         return RedirectResponse(url=redirect_uri, status_code=302)
 
     async def _complete_login(self, username: str, password: str, state: str) -> str:
-        state_data = self.state_mapping.get(state)
+        state_data = self.store.get_login_state(state)
         if not state_data:
             raise HTTPException(400, "Invalid state parameter")
 
-        redirect_uri = state_data["redirect_uri"]
-        code_challenge = state_data["code_challenge"]
-        redirect_uri_provided_explicitly = state_data["redirect_uri_provided_explicitly"] == "True"
-        client_id = state_data["client_id"]
-        resource = state_data.get("resource")
-
-        assert redirect_uri is not None
-        assert code_challenge is not None
-        assert client_id is not None
+        redirect_uri = state_data.redirect_uri
+        code_challenge = state_data.code_challenge
+        redirect_uri_provided_explicitly = state_data.redirect_uri_provided_explicitly
+        client_id = state_data.client_id
+        resource = state_data.resource
 
         member = self.registry.authenticate(username, password)
         if member is None:
             raise HTTPException(401, "Invalid credentials")
 
         new_code = f"mcp_{secrets.token_hex(16)}"
-        self.auth_codes[new_code] = AuthorizationCode(
-            code=new_code,
-            client_id=client_id,
-            redirect_uri=AnyHttpUrl(redirect_uri),
-            redirect_uri_provided_explicitly=redirect_uri_provided_explicitly,
-            expires_at=time.time() + AUTH_CODE_TTL_SECONDS,
-            scopes=[MCP_SCOPE],
-            code_challenge=code_challenge,
-            resource=resource,
-            subject=member.member_id,
+        self.store.save_authorization_code(
+            AuthorizationCode(
+                code=new_code,
+                client_id=client_id,
+                redirect_uri=AnyHttpUrl(redirect_uri),
+                redirect_uri_provided_explicitly=redirect_uri_provided_explicitly,
+                expires_at=time.time() + AUTH_CODE_TTL_SECONDS,
+                scopes=[MCP_SCOPE],
+                code_challenge=code_challenge,
+                resource=resource,
+                subject=member.member_id,
+            )
         )
 
-        del self.state_mapping[state]
+        self.store.delete_login_state(state)
         return construct_redirect_uri(redirect_uri, code=new_code, state=state)
 
     async def load_authorization_code(
         self, client: OAuthClientInformationFull, authorization_code: str
     ) -> AuthorizationCode | None:
-        return self.auth_codes.get(authorization_code)
+        return self.store.get_authorization_code(authorization_code)
 
     async def exchange_authorization_code(
         self, client: OAuthClientInformationFull, authorization_code: AuthorizationCode
     ) -> OAuthToken:
-        if authorization_code.code not in self.auth_codes:
+        if self.store.get_authorization_code(authorization_code.code) is None:
             raise ValueError("Invalid authorization code")
         if not client.client_id:
             raise ValueError("No client_id provided")
 
         token = f"mcp_{secrets.token_hex(32)}"
-        self.tokens[token] = AccessToken(
-            token=token,
-            client_id=client.client_id,
-            scopes=authorization_code.scopes,
-            expires_at=int(time.time()) + ACCESS_TOKEN_TTL_SECONDS,
-            resource=authorization_code.resource,
-            subject=authorization_code.subject,
+        self.store.save_access_token(
+            AccessToken(
+                token=token,
+                client_id=client.client_id,
+                scopes=authorization_code.scopes,
+                expires_at=int(time.time()) + ACCESS_TOKEN_TTL_SECONDS,
+                resource=authorization_code.resource,
+                subject=authorization_code.subject,
+            )
         )
 
-        del self.auth_codes[authorization_code.code]
+        self.store.delete_authorization_code(authorization_code.code)
 
         return OAuthToken(
             access_token=token,
@@ -208,12 +215,12 @@ class TeamOAuthProvider(OAuthAuthorizationServerProvider[AuthorizationCode, Refr
     # -- Token lifecycle -----------------------------------------------------
 
     async def load_access_token(self, token: str) -> AccessToken | None:
-        access_token = self.tokens.get(token)
+        access_token = self.store.get_access_token(token)
         if not access_token:
             return None
 
         if access_token.expires_at and access_token.expires_at < time.time():
-            del self.tokens[token]
+            self.store.delete_access_token(token)
             return None
 
         if access_token.subject is None or self.registry.by_id(access_token.subject) is None:
@@ -233,5 +240,5 @@ class TeamOAuthProvider(OAuthAuthorizationServerProvider[AuthorizationCode, Refr
         raise NotImplementedError("Refresh tokens are not supported")
 
     async def revoke_token(self, token: AccessToken | RefreshToken) -> None:
-        if token.token in self.tokens:
-            del self.tokens[token.token]
+        if isinstance(token, AccessToken):
+            self.store.delete_access_token(token.token)

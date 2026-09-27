@@ -37,8 +37,11 @@ Dynamic Client Registration. There is no external identity provider.
   short-circuiting so neither a wrong username nor a wrong password is faster
   to reject (no timing-based username enumeration).
 - `/token` — exchanges the PKCE-verified authorization code for a bearer token.
-- Access tokens live in an in-memory dict, expire after 30 days, and are never
-  logged.
+- With `OAUTH_DB_PATH`, registered clients, access tokens, authorization codes,
+  and login state live in a SQLite database and survive restarts. Without it,
+  the same state remains in memory and the server emits a startup warning.
+- Access tokens expire after 30 days and are never logged. The SQLite database
+  contains credentials and must be protected like the production `.env` file.
 
 This is a real OAuth flow — the AI app performs the redirect/consent/exchange
 itself — not a static token pasted into the UI. Static pasted tokens, custom
