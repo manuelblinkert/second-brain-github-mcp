@@ -16,7 +16,7 @@ You run it yourself. There is no hosted service and no account: you deploy the
 server, point it at your own repository, and connect your AI app to it.
 
 Background article:
-[Beyond Chat History: Building an AI-Native Second Brain with Obsidian, GitHub, and MCP](https://manuelblinkert.com/blog/beyond-chat-history-ai-native-second-brain)
+[Beyond Chat History: Building an AI-Native Second Brain with Obsidian, GitHub, and MCP](https://manuelblinkert.com/blog/beyond-chat-history-ai-native-second-brain?utm_source=github&utm_medium=readme&utm_campaign=beyond-chat-history-ai-native-second-brain)
 
 ## What it does
 
@@ -151,7 +151,7 @@ uv run pytest
 
 ## Author
 
-Built by [Manuel Blinkert](https://manuelblinkert.com).
+Built by [Manuel Blinkert](https://manuelblinkert.com/?utm_source=github&utm_medium=readme&utm_campaign=second-brain-github-mcp).
 
 ## License
 
